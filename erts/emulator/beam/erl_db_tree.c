@@ -404,6 +404,8 @@ static int db_first_tree(Process *p, DbTable *tbl,
 		  Eterm *ret);
 static int db_next_tree(Process *p, DbTable *tbl, 
 			Eterm key, Eterm *ret);
+static int db_next_object_tree(Process *p, DbTable *tbl,
+			Eterm key, Eterm *ret);
 static int db_last_tree(Process *p, DbTable *tbl, 
 			Eterm *ret);
 static int db_prev_tree(Process *p, DbTable *tbl, 
@@ -526,7 +528,8 @@ DbTableMethod db_tree =
     db_get_dbterm_key_tree_common,
     db_get_binary_info_tree,
     db_first_tree, /* raw_first same as first */
-    db_next_tree   /* raw_next same as next */
+    db_next_tree,   /* raw_next same as next */
+    db_next_object_tree
 };
 
 
@@ -593,7 +596,8 @@ static int db_first_tree(Process *p, DbTable *tbl, Eterm *ret)
 
 int db_next_tree_common(Process *p, DbTable *tbl,
                         TreeDbTerm *root, Eterm key,
-                        Eterm *ret, DbTreeStack* stack)
+                        Eterm *ret, DbTreeStack* stack,
+                        Eterm (*func)(Process *, DbTable *, DbTerm *))
 {
     TreeDbTerm *this;
 
@@ -604,7 +608,7 @@ int db_next_tree_common(Process *p, DbTable *tbl,
 	*ret = am_EOT;
 	return DB_ERROR_NONE;
     }
-    *ret = db_copy_key(p, tbl, &this->dbterm);
+    *ret = (*func)(p, tbl, &this->dbterm);
     return DB_ERROR_NONE;
 }
 
@@ -612,7 +616,16 @@ static int db_next_tree(Process *p, DbTable *tbl, Eterm key, Eterm *ret)
 {
     DbTableTree *tb = &tbl->tree;
     DbTreeStack* stack = get_any_stack(tbl, tb);
-    int ret_val = db_next_tree_common(p, tbl, tb->root, key, ret, stack);
+    int ret_val = db_next_tree_common(p, tbl, tb->root, key, ret, stack, db_copy_key);
+    release_stack(tbl,tb,stack);
+    return ret_val;
+}
+
+static int db_next_object_tree(Process *p, DbTable *tbl, Eterm key, Eterm *ret)
+{
+    DbTableTree *tb = &tbl->tree;
+    DbTreeStack* stack = get_any_stack(tbl, tb);
+    int ret_val = db_next_tree_common(p, tbl, tb->root, key, ret, stack, db_copy_object);
     release_stack(tbl,tb,stack);
     return ret_val;
 }

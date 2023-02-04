@@ -659,6 +659,11 @@ static int db_next_hash(Process *p,
 			Eterm key,
 			Eterm *ret);
 
+static int db_next_object_hash(Process *p,
+			DbTable *tbl,
+			Eterm key,
+			Eterm *ret);
+
 static int db_member_hash(DbTable *tbl, Eterm key, Eterm *ret);
 
 static int db_get_element_hash(Process *p, DbTable *tbl, 
@@ -873,7 +878,8 @@ DbTableMethod db_hash =
     db_get_dbterm_key_hash,
     db_get_binary_info_hash,
     db_raw_first_hash,
-    db_raw_next_hash
+    db_raw_next_hash,
+    db_next_object_hash
 };
 
 #ifdef DEBUG
@@ -1093,7 +1099,7 @@ static int db_first_hash(Process *p, DbTable *tbl, Eterm *ret)
 }
 
 
-static int db_next_hash(Process *p, DbTable *tbl, Eterm key, Eterm *ret)
+static int db_next_hash_common(Process *p, DbTable *tbl, Eterm key, Eterm *ret, Eterm (*func)(Process *, DbTable *, DbTerm *))
 {
     DbTableHash *tb = &tbl->hash;
     HashValue hval;
@@ -1132,11 +1138,22 @@ static int db_next_hash(Process *p, DbTable *tbl, Eterm key, Eterm *ret)
     }
     else {
         ASSERT(!is_pseudo_deleted(b));
-	*ret = db_copy_key(p, tbl, &b->dbterm);
+	*ret = (*func)(p, tbl, &b->dbterm);
 	RUNLOCK_HASH(lck);
     }    
     return DB_ERROR_NONE;
 }    
+
+static int db_next_hash(Process *p, DbTable *tbl, Eterm key, Eterm *ret)
+{
+    return db_next_hash_common(p, tbl, key, ret, db_copy_key);
+}
+
+
+static int db_next_object_hash(Process *p, DbTable *tbl, Eterm key, Eterm *ret)
+{
+    return db_next_hash_common(p, tbl, key, ret, db_copy_object);
+}
 
 struct tmp_uncomp_term {
     Eterm term;

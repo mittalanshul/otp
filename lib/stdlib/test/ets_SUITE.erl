@@ -105,6 +105,7 @@
 -export([whereis_table/1]).
 -export([ms_excessive_nesting/1]).
 -export([error_info/1]).
+-export([next_object/1]).
 
 -export([init_per_testcase/2, end_per_testcase/2]).
 %% Convenience for manual testing
@@ -184,7 +185,8 @@ all() ->
      test_delete_table_while_size_snapshot,
      test_decentralized_counters_setting,
      ms_excessive_nesting,
-     error_info
+     error_info,
+     next_object
     ].
 
 
@@ -4777,6 +4779,39 @@ dyn_lookup(T, K) ->
 	    io:fwrite("hmmm... ~p =/= ~p~n", [NextKey,NK]),
 	    exit(failed)
     end.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Tests ets:next_object/2
+
+next_object(Config) when is_list(Config) ->
+    % passing an anon function instead of expected output since I don't know a good way to pass '_' as param
+    repeat_for_opts_all_hash_table_types(
+        fun(Opts) -> next_object_do(Opts, fun (OutputForAbsentKey) -> {'EXIT',{badarg,_}} = OutputForAbsentKey end) end),
+    repeat_for_opts_all_ord_set_table_types(
+        fun(Opts) -> next_object_do(Opts, fun (OutputForAbsentKey) -> '$end_of_table' = OutputForAbsentKey end) end).
+
+next_object_do(Opts, AssertFuncForAbsentKey) when is_function(AssertFuncForAbsentKey, 1) ->
+    EtsMem = etsmem(),
+    Tab = ets_new(foo,Opts),
+    AssertFuncForAbsentKey((catch ets:next_object(Tab,{key, absent}))),
+    fill_tab(Tab,foo),
+    next_object_do_loop(Tab, ets:first(Tab)),
+    true = ets:delete(Tab),
+    verify_etsmem(EtsMem).
+
+next_object_do_loop(Tab, '$end_of_table') ->
+    ok;
+next_object_do_loop(Tab, Key) ->
+    NextKey = ets:next(Tab, Key),
+    [Ret] = case NextKey of
+        '$end_of_table' ->
+            ['$end_of_table'];
+        _ ->
+            ets:lookup(Tab, NextKey)
+        end,
+    Ret = ets:next_object(Tab, Key),
+    next_object_do_loop(Tab, NextKey).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -9749,6 +9784,9 @@ repeat_for_opts_all_non_stim_table_types(F) ->
 repeat_for_opts_all_set_table_types(F) ->
     repeat_for_opts(F, [set_types, write_concurrency, read_concurrency, compressed]).
 
+repeat_for_opts_all_hash_table_types(F) ->
+    repeat_for_opts(F, [hash_types, write_concurrency, read_concurrency, compressed]).
+
 repeat_for_all_set_table_types(F) ->
     repeat_for_opts(F, [set_types]).
 
@@ -9791,6 +9829,7 @@ repeat_for_opts(F, [Atom | Tail], AccList) when is_atom(Atom) ->
     repeat_for_opts(F, [repeat_for_opts_atom2list(Atom) | Tail ], AccList).
 
 repeat_for_opts_atom2list(set_types) -> [set,ordered_set,stim_cat_ord_set,cat_ord_set];
+repeat_for_opts_atom2list(hash_types) -> [set,bag,duplicate_bag];
 repeat_for_opts_atom2list(ord_set_types) -> [ordered_set,stim_cat_ord_set,cat_ord_set];
 repeat_for_opts_atom2list(all_types) -> [set,ordered_set,stim_cat_ord_set,cat_ord_set,bag,duplicate_bag];
 repeat_for_opts_atom2list(all_non_stim_types) -> [set,ordered_set,cat_ord_set,bag,duplicate_bag];

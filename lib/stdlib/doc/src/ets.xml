@@ -175,6 +175,7 @@
       <item><p><em>Single-step</em> traversal one key at at time, using
 	<seemfa marker="#first/1"><c>first/1</c></seemfa>,
 	<seemfa marker="#next/2"><c>next/2</c></seemfa>,
+  <seemfa marker="#next_object/2"><c>next_object/2</c></seemfa>,
 	<seemfa marker="#last/1"><c>last/1</c></seemfa> and
 	<seemfa marker="#prev/2"><c>prev/2</c></seemfa>.</p>
       </item>
@@ -1440,6 +1441,16 @@ ets:select(Table, MatchSpec),</code>
     </func>
 
     <func>
+      <name name="next_object" arity="2" since=""/>
+      <fsummary>Return the next object in an ETS table.</fsummary>
+      <desc>
+        <p>Similar to <seemfa marker="#next/2"><c>next/2</c></seemfa> except that
+         it returns the object (key with value) stored in the table, instead of just the key.
+        </p>
+      </desc>
+    </func>
+
+    <func>
       <name name="prev" arity="2" since=""/>
       <fsummary>Return the previous key in an ETS table of type
         <c>ordered_set</c>.</fsummary>
@@ -2308,4 +2319,3 @@ true</pre>
     </func>
   </funcs>
 </erlref>
-

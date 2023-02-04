@@ -250,6 +250,8 @@ typedef struct db_table_method
        Only internal use by ets:info(_,binary) */
     int (*db_raw_first)(Process*, DbTable*, Eterm* ret);
     int (*db_raw_next)(Process*, DbTable*, Eterm key, Eterm* ret);
+    /* Same as db_next, but returns object instead of just key */
+    int (*db_next_object)(Process*, DbTable*, Eterm key, Eterm* ret);
 } DbTableMethod;
 
 typedef struct db_fixation {
@@ -370,6 +372,7 @@ typedef struct db_table_common {
 
 
 ERTS_GLB_INLINE Eterm db_copy_key(Process* p, DbTable* tb, DbTerm* obj);
+ERTS_GLB_INLINE Eterm db_copy_object(Process* p, DbTable* tb, DbTerm* obj);
 Eterm db_copy_from_comp(DbTableCommon* tb, DbTerm* bp, Eterm** hpp,
 			ErlOffHeap* off_heap);
 int db_eq_comp(DbTableCommon* tb, Eterm a, DbTerm* b);
@@ -394,6 +397,18 @@ ERTS_GLB_INLINE Eterm db_copy_key(Process* p, DbTable* tb, DbTerm* obj)
 	ASSERT(EQ(res,key));
 	return res;
     }
+}
+
+ERTS_GLB_INLINE Eterm db_copy_object(Process* p, DbTable* tb, DbTerm* obj) {
+    Eterm *hp, *hend;
+    Uint sz = obj->size;
+    hp = HAlloc(p, sz);
+    hend = hp + sz;
+
+    Eterm res = db_copy_object_from_ets((DbTableCommon*)tb, obj, &hp, &MSO(p));
+    HRelease(p,hend,hp);
+
+    return res;
 }
 
 ERTS_GLB_INLINE Eterm db_copy_object_from_ets(DbTableCommon* tb, DbTerm* bp,

@@ -89,7 +89,8 @@ int db_first_tree_common(Process *p, DbTable *tbl, TreeDbTerm *root,
                          Eterm *ret, DbTableTree *stack_container);
 int db_next_tree_common(Process *p, DbTable *tbl,
                         TreeDbTerm *root, Eterm key,
-                        Eterm *ret, DbTreeStack* stack);
+                        Eterm *ret, DbTreeStack* stack,
+                        Eterm (*func)(Process *, DbTable *, DbTerm *));
 int db_last_tree_common(Process *p, DbTable *tbl, TreeDbTerm *root,
                         Eterm *ret, DbTableTree *stack_container);
 int db_prev_tree_common(Process *p, DbTable *tbl, TreeDbTerm *root, Eterm key,

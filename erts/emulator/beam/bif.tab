@@ -373,6 +373,7 @@ bif ets:match_object/2
 bif ets:match_object/3
 bif ets:member/2
 bif ets:next/2
+bif ets:next_object/2
 bif ets:prev/2
 bif ets:insert/2
 bif ets:insert_new/2

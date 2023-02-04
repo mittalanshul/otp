@@ -1138,6 +1138,30 @@ BIF_RETTYPE ets_next_2(BIF_ALIST_2)
     BIF_RET(ret);
 }
 
+
+/*
+** The next_object BIF, given a key, return the "next" object
+*/
+BIF_RETTYPE ets_next_object_2(BIF_ALIST_2)
+{
+    DbTable* tb;
+    int cret;
+    Eterm ret;
+
+    CHECK_TABLES();
+
+    DB_BIF_GET_TABLE(tb, DB_READ, LCK_READ, BIF_ets_next_object_2);
+
+    cret = tb->common.meth->db_next_object(BIF_P, tb, BIF_ARG_2, &ret);
+
+    db_unlock(tb, LCK_READ);
+
+    if (cret != DB_ERROR_NONE) {
+	BIF_ERROR(BIF_P, BADARG);
+    }
+    BIF_RET(ret);
+}
+
 /* 
 ** Returns the last Key in a table 
 */

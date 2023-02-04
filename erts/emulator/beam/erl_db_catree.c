@@ -100,6 +100,8 @@ static int db_first_catree(Process *p, DbTable *tbl,
                            Eterm *ret);
 static int db_next_catree(Process *p, DbTable *tbl,
                           Eterm key, Eterm *ret);
+static int db_next_object_catree(Process *p, DbTable *tbl,
+                                 Eterm key, Eterm *ret);
 static int db_last_catree(Process *p, DbTable *tbl,
                           Eterm *ret);
 static int db_prev_catree(Process *p, DbTable *tbl,
@@ -227,7 +229,8 @@ DbTableMethod db_catree =
     db_get_dbterm_key_tree_common,
     db_get_binary_info_catree,
     db_first_catree, /* raw_first same as first */
-    db_next_catree   /* raw_next same as next */
+    db_next_catree,   /* raw_next same as next */
+    db_next_object_catree
 };
 
 /*
@@ -1586,7 +1589,7 @@ static int db_first_catree(Process *p, DbTable *tbl, Eterm *ret)
     return result;
 }
 
-static int db_next_catree(Process *p, DbTable *tbl, Eterm key, Eterm *ret)
+static int db_next_catree_common(Process *p, DbTable *tbl, Eterm key, Eterm *ret, Eterm (*func)(Process *, DbTable *, DbTerm *))
 {
     DbTreeStack stack;
     TreeDbTerm * stack_array[STACK_NEED];
@@ -1600,7 +1603,7 @@ static int db_next_catree(Process *p, DbTable *tbl, Eterm key, Eterm *ret)
 
     do {
         init_tree_stack(&stack, stack_array, 0);
-        result = db_next_tree_common(p, tbl, (rootp ? *rootp : NULL), key, ret, &stack);
+        result = db_next_tree_common(p, tbl, (rootp ? *rootp : NULL), key, ret, &stack, func);
         if (result != DB_ERROR_NONE || *ret != am_EOT)
             break;
 
@@ -1609,6 +1612,16 @@ static int db_next_catree(Process *p, DbTable *tbl, Eterm key, Eterm *ret)
 
     destroy_root_iterator(&iter);
     return result;
+}
+
+static int db_next_catree(Process *p, DbTable *tbl, Eterm key, Eterm *ret)
+{
+    return db_next_catree_common(p, tbl, key, ret, db_copy_key);
+}
+
+static int db_next_object_catree(Process *p, DbTable *tbl, Eterm key, Eterm *ret)
+{
+    return db_next_catree_common(p, tbl, key, ret, db_copy_object);
 }
 
 static int db_last_catree(Process *p, DbTable *tbl, Eterm *ret)
