@@ -400,12 +400,12 @@ ERTS_GLB_INLINE Eterm db_copy_key(Process* p, DbTable* tb, DbTerm* obj)
 }
 
 ERTS_GLB_INLINE Eterm db_copy_object(Process* p, DbTable* tb, DbTerm* obj) {
-    Eterm *hp, *hend;
+    Eterm *hp, *hend, res;
     Uint sz = obj->size;
     hp = HAlloc(p, sz);
     hend = hp + sz;
 
-    Eterm res = db_copy_object_from_ets((DbTableCommon*)tb, obj, &hp, &MSO(p));
+    res = db_copy_object_from_ets((DbTableCommon*)tb, obj, &hp, &MSO(p));
     HRelease(p,hend,hp);
 
     return res;
