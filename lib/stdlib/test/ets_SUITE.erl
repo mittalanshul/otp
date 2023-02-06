@@ -9261,11 +9261,13 @@ error_info(_Config) ->
          %% not exist.
          {next, [Set, no_key]},
          {prev, [Set, no_key]},
+         {next_object, [Set, no_key]},
 
          %% For an ordered set, ets:next/2 and ets:prev/2 succeeds
          %% even if the key does not exist.
          {next, [OrderedSet, no_key], [no_fail]},
          {prev, [OrderedSet, no_key], [no_fail]},
+         {next_object, [OrderedSet, no_key], [no_fail]},
 
          {rename, ['$Tab', {bad,name}]},
          {rename, [NamedTable, '$named_table']},
