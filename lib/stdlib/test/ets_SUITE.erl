@@ -30,6 +30,8 @@
 	 evil_delete/1,baddelete/1,match_delete/1,table_leak/1]).
 -export([match_delete3/1]).
 -export([firstnext/1,firstnext_concurrent/1]).
+-export([firstnext_lookup/1,firstnext_lookup_concurrent/1]).
+-export([first_next_lookup_same_as_first_next/1, last_prev_lookup_same_as_last_prev/1]).
 -export([slot/1]).
 -export([hash_clash/1]).
 -export([match1/1, match2/1, match_object/1, match_object2/1]).
@@ -142,7 +144,8 @@ suite() ->
 
 all() ->
     [{group, new}, {group, insert}, {group, lookup},
-     {group, delete}, firstnext, firstnext_concurrent, slot, hash_clash,
+     {group, delete}, firstnext, firstnext_concurrent,
+     firstnext_lookup, firstnext_lookup_concurrent, slot, hash_clash,
      {group, match}, t_match_spec_run,
      {group, lookup_element}, {group, misc}, {group, files},
      {group, heavy}, {group, insert_list}, ordered, ordered_match,
@@ -191,7 +194,8 @@ all() ->
      test_delete_table_while_size_snapshot,
      test_decentralized_counters_setting,
      ms_excessive_nesting,
-     error_info
+     error_info,
+     first_next_lookup_same_as_first_next, last_prev_lookup_same_as_last_prev
     ].
 
 
@@ -4887,35 +4891,59 @@ match_delete3_do(Opts) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% Test ets:first/1 & ets:next/2.
-firstnext(Config) when is_list(Config) ->
-    repeat_for_opts_all_set_table_types(fun firstnext_do/1).
 
-firstnext_do(Opts) ->
+ets_first_using_first_lookup(Tab) ->
+    case ets:first_lookup(Tab) of
+        '$end_of_table' ->
+            '$end_of_table';
+        {Key, _} ->
+            Key
+    end.
+
+ets_next_using_next_lookup(Tab, Key) ->
+    case ets:next_lookup(Tab, Key) of
+        '$end_of_table' ->
+            '$end_of_table';
+        {Key2, _} ->
+            Key2
+    end.
+
+firstnext(Config) when is_list(Config) ->
+    repeat_for_opts_all_set_table_types(
+        fun(Opts) -> firstnext_do(Opts, fun ets:first/1, fun ets:next/2) end).
+
+firstnext_lookup(Config) when is_list(Config) ->
+    repeat_for_opts_all_set_table_types(
+        fun(Opts) -> firstnext_do(Opts, fun ets_first_using_first_lookup/1, fun ets_next_using_next_lookup/2) end).
+
+firstnext_do(Opts, FirstKeyFun, NextKeyFun) ->
     EtsMem = etsmem(),
     Tab = ets_new(foo,Opts),
-    [] = firstnext_collect(Tab,ets:first(Tab),[]),
+    [] = firstnext_collect(Tab,FirstKeyFun(Tab),[], NextKeyFun),
     fill_tab(Tab,foo),
     Len = length(ets:tab2list(Tab)),
-    Len = length(firstnext_collect(Tab,ets:first(Tab),[])),
+    Len = length(firstnext_collect(Tab,FirstKeyFun(Tab),[], NextKeyFun)),
     true = ets:delete(Tab),
     verify_etsmem(EtsMem).
 
-firstnext_collect(_Tab,'$end_of_table',List) ->
+firstnext_collect(_Tab,'$end_of_table',List, _NextKeyFun) ->
     List;
-firstnext_collect(Tab,Key,List) ->
-    firstnext_collect(Tab,ets:next(Tab,Key),[Key|List]).
+firstnext_collect(Tab,Key,List, NextKeyFun) ->
+    firstnext_collect(Tab,NextKeyFun(Tab,Key),[Key|List], NextKeyFun).
 
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-%% Tests ets:first/1 & ets:next/2.
 firstnext_concurrent(Config) when is_list(Config) ->
+    firstnext_concurrent_do(Config, fun ets:first/1, fun ets:next/2).
+
+firstnext_lookup_concurrent(Config) when is_list(Config) ->
+    firstnext_concurrent_do(Config, fun ets_first_using_first_lookup/1, fun ets_next_using_next_lookup/2).
+
+firstnext_concurrent_do(Config, FirstKeyFun, NextKeyFun) when is_list(Config) ->
     lists:foreach(
       fun(TableType) -> 
               register(master, self()),
               TableName = list_to_atom(atom_to_list(?MODULE) ++ atom_to_list(TableType)),
               ets_init(TableName, 20, TableType),
-              [dynamic_go(TableName) || _ <- lists:seq(1, 2)],
+              [dynamic_go(TableName, FirstKeyFun, NextKeyFun) || _ <- lists:seq(1, 2)],
               receive
               after 5000 -> ok
               end,
@@ -4931,22 +4959,82 @@ cycle(Tab, L) ->
     ets:insert(Tab,list_to_tuple(L)),
     cycle(Tab, tl(L)++[hd(L)]).
 
-dynamic_go(TableName) -> my_spawn_link(fun() -> dynamic_init(TableName) end).
+dynamic_go(TableName, FirstKeyFun, NextKeyFun) -> my_spawn_link(fun() -> dynamic_init(TableName, FirstKeyFun, NextKeyFun) end).
 
-dynamic_init(TableName) -> [dyn_lookup(TableName) || _ <- lists:seq(1, 10)].
+dynamic_init(TableName, FirstKeyFun, NextKeyFun) -> [dyn_lookup(TableName, FirstKeyFun, NextKeyFun) || _ <- lists:seq(1, 10)].
 
-dyn_lookup(T) -> dyn_lookup(T, ets:first(T)).
+dyn_lookup(T, FirstKeyFun, NextKeyFun) -> dyn_lookup_next(T, FirstKeyFun(T), NextKeyFun).
 
-dyn_lookup(_T, '$end_of_table') -> [];
-dyn_lookup(T, K) ->
-    NextKey = ets:next(T,K),
-    case ets:next(T,K) of
+dyn_lookup_next(_T, '$end_of_table', _NextKeyFun) -> [];
+dyn_lookup_next(T, K, NextKeyFun) ->
+    NextKey = NextKeyFun(T,K),
+    case NextKeyFun(T,K) of
 	NextKey ->
-	    dyn_lookup(T, NextKey);
+	    dyn_lookup_next(T, NextKey, NextKeyFun);
 	NK ->
 	    io:fwrite("hmmm... ~p =/= ~p~n", [NextKey,NK]),
 	    exit(failed)
     end.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Tests ets:first_lookup/1 and ets:next_lookup/2
+
+first_next_lookup_same_as_first_next(Config) when is_list(Config) ->
+    repeat_for_opts_all_table_types(fun next_lookup_do/1).
+
+next_lookup_do(Opts) ->
+    EtsMem = etsmem(),
+    Tab = ets_new(foo,Opts),
+    fill_tab(Tab,foo),
+    FirstKey = ets:first(Tab),
+    {FirstKey, _} = ets:first_lookup(Tab),
+    next_lookup_do_loop(Tab, FirstKey),
+    true = ets:delete(Tab),
+    verify_etsmem(EtsMem).
+
+next_lookup_do_loop(_Tab, '$end_of_table') ->
+    ok;
+next_lookup_do_loop(Tab, Key) ->
+    NextKey = ets:next(Tab, Key),
+    ExpectedRet = case NextKey of
+        '$end_of_table' ->
+            '$end_of_table';
+        _ ->
+            {NextKey, ets:lookup(Tab, NextKey)}
+        end,
+    ExpectedRet = ets:next_lookup(Tab, Key),
+    next_lookup_do_loop(Tab, NextKey).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Tests ets:last_lookup/1 and ets:prev_lookup/2
+
+last_prev_lookup_same_as_last_prev(Config) when is_list(Config) ->
+    repeat_for_opts_all_table_types(fun prev_lookup_do/1).
+
+prev_lookup_do(Opts) ->
+    EtsMem = etsmem(),
+    Tab = ets_new(foo,Opts),
+    fill_tab(Tab,foo),
+    LastKey = ets:last(Tab),
+    {LastKey, _} = ets:last_lookup(Tab),
+    prev_lookup_do_loop(Tab, LastKey),
+    true = ets:delete(Tab),
+    verify_etsmem(EtsMem).
+
+prev_lookup_do_loop(_Tab, '$end_of_table') ->
+    ok;
+prev_lookup_do_loop(Tab, Key) ->
+    PrevKey = ets:prev(Tab, Key),
+    ExpectedRet = case PrevKey of
+        '$end_of_table' ->
+            '$end_of_table';
+        _ ->
+            {PrevKey, ets:lookup(Tab, PrevKey)}
+        end,
+    ExpectedRet = ets:prev_lookup(Tab, Key),
+    prev_lookup_do_loop(Tab, PrevKey).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -9333,6 +9421,7 @@ error_info(_Config) ->
          {file2tab, 2},                          %Not BIF.
 
          {first, ['$Tab']},
+         {first_lookup, ['$Tab']},
 
          {foldl, 3},                            %Not BIF.
          {foldr, 3},                            %Not BIF.
@@ -9377,6 +9466,7 @@ error_info(_Config) ->
          {is_compiled_ms, [bad_ms], [no_fail, no_table]},
 
          {last, ['$Tab']},
+         {last_lookup, ['$Tab']},
 
          {lookup, ['$Tab', no_key], [no_fail]},
 
@@ -9418,11 +9508,15 @@ error_info(_Config) ->
          %% not exist.
          {next, [Set, no_key]},
          {prev, [Set, no_key]},
+         {next_lookup, [Set, no_key]},
+         {prev_lookup, [Set, no_key]},
 
-         %% For an ordered set, ets:next/2 and ets:prev/2 succeeds
-         %% even if the key does not exist.
+         % For an ordered set, ets:next/2 and ets:prev/2 succeeds
+         % even if the key does not exist.
          {next, [OrderedSet, no_key], [no_fail]},
          {prev, [OrderedSet, no_key], [no_fail]},
+         {next_lookup, [OrderedSet, no_key], [no_fail]},
+         {prev_lookup, [OrderedSet, no_key], [no_fail]},
 
          {rename, ['$Tab', {bad,name}]},
          {rename, [NamedTable, '$named_table']},
@@ -9983,6 +10077,7 @@ repeat_for_opts(F, [Atom | Tail], AccList) when is_atom(Atom) ->
     repeat_for_opts(F, [repeat_for_opts_atom2list(Atom) | Tail ], AccList).
 
 repeat_for_opts_atom2list(set_types) -> [set,ordered_set,stim_cat_ord_set,cat_ord_set];
+repeat_for_opts_atom2list(hash_types) -> [set,bag,duplicate_bag];
 repeat_for_opts_atom2list(ord_set_types) -> [ordered_set,stim_cat_ord_set,cat_ord_set];
 repeat_for_opts_atom2list(all_types) -> [set,ordered_set,stim_cat_ord_set,cat_ord_set,bag,duplicate_bag];
 repeat_for_opts_atom2list(all_non_stim_types) -> [set,ordered_set,cat_ord_set,bag,duplicate_bag];
